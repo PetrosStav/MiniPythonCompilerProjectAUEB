@@ -1,0 +1,231 @@
+// Authors:
+// Stavropoulos Petros (AM: 3150230)
+// Kornelatou Erasmia  (AM: 3120076)
+
+Package minipython;
+
+Helpers
+	digit = ['0' .. '9'];
+	letter = ['a' .. 'z']|['A' .. 'Z']; 
+	cr = 13; 
+	lf = 10;
+	eol = lf | cr | cr lf ;
+	space = 32;
+	string = letter|space;
+	all = [0..127]; 
+	not_eol = [all - [cr + lf]]; 
+	
+	minus = '-';
+	quote = '"';
+	squote = ''';
+	dot = '.';
+	
+Tokens
+	tab = 9;
+	
+	plus = '+';
+	decreq = '-=';
+	minus = minus;
+	p = '**';
+	mult = '*';
+	diveq = '/=';
+	div = '/';
+	neq = '!=';
+	eqeq = '==';
+	eq = '=';
+	less = '<';
+	great = '>';
+	l_par = '(';
+	r_par = ')';
+	l_sqrbrkt = '[';
+	r_sqrbrkt = ']';
+	comma=',';
+	dot = dot;
+	semi = ':';
+	
+	if = 'if';
+	print = 'print';
+	while = 'while';
+	for = 'for';
+	def = 'def';
+	import_k = 'import';
+	from = 'from';
+	as = 'as';
+	assert = 'assert';
+	in = 'in';
+	return = 'return';
+	true = 'true';
+	false = 'false';
+	
+	blank = (' ' | lf | cr);
+	line_comment = '#' not_eol* eol;
+		
+	string_lit = (quote string* quote) | (squote string* squote);
+	float = minus? digit* dot digit+;
+	integer = minus? ([digit-'0'] digit* | '0');
+		
+	id = letter (letter | digit | '_')*;
+
+
+Ignored Tokens
+	blank, line_comment;
+
+Productions	
+	goal = command*{-> New goal([command])};
+	
+	command = {function} function{-> New command.function(function)}|
+			 {statement} statement{-> New command.statement(statement)};
+	
+	function = def id l_par argument? r_par semi statement{-> New function(id, [argument], statement)};
+	
+	argument = id arg_set_value? more_args*{-> New argument(id, [arg_set_value], [more_args])};
+	
+	arg_set_value = eq value{-> New arg_set_value(value)};
+	
+	more_args = comma id arg_set_value?{-> New more_args(id, [arg_set_value])};
+	
+	statement = {if} tab* if comparison semi statement{-> New statement.if(comparison,statement)}|
+				{while} tab* while comparison semi statement{-> New statement.while(comparison, statement)}|
+				{for} tab* for [id1]:id in [id2]:id semi statement{-> New statement.for(id1,id2,statement)}| //maybe here instead of id,id => id1,id2
+				{return} tab* return expression{-> New statement.return(expression)}|
+				{print} tab* print expression more_exp*{-> New statement.print(expression, [more_exp])}|
+				{assign} tab* id eq expression{-> New statement.assign(id, expression)}|
+				{decrement} tab* id decreq expression{-> New statement.decrement(id, expression)}|
+				{decrement_div} tab* id diveq expression{-> New statement.decrement_div(id, expression)}|
+				{assign_element} tab* id l_sqrbrkt [e1]:expression r_sqrbrkt eq [e2]:expression{-> New statement.assign_element(id, e1, e2)}| // instead of expression,expression => e1,e2
+				{assertion} tab* assert expression more_exp?{-> New statement.assertion(expression, [more_exp])}|
+				{assertion_cmp} tab* assert comparison more_exp?{-> New statement.assertion_cmp(comparison, [more_exp])}|
+				{func_call} tab* function_call{-> New statement.func_call(function_call)}|
+				{import} import{-> New statement.import(import)};
+	
+	more_exp = comma expression{-> New more_exp(expression)};
+
+	expression = {multiplication} multiplication{->multiplication.expression}| 
+				 {addition} expression plus multiplication{-> New expression.addition(expression, multiplication.expression)}|
+				 {subtraction} expression minus multiplication{-> New expression.subtraction(expression, multiplication.expression)};
+	
+	
+	multiplication{->expression} = {pow} pow{->pow.expression} |
+					 {multiplication} multiplication mult pow{-> New expression.multiplication(multiplication.expression, pow.expression)}|
+					 {division} multiplication div pow{-> New expression.division(multiplication.expression, pow.expression)};
+	
+	
+	pow{->expression} = {something} something{->something.expression}|
+		  {pow} pow p something{-> New expression.pow(pow.expression, something.expression)};
+		  
+	something{->expression} = {identifier} id{-> New expression.identifier(id)}|
+				{value} value{-> New expression.value(value)}|
+				{func_call} function_call{-> New expression.func_call(function_call)}|
+				{par} l_par expression r_par{-> New expression.par(expression)}|
+				{list} l_sqrbrkt value more_values* r_sqrbrkt{-> New expression.list(value, [more_values])}|
+				{l_element} id l_sqrbrkt expression r_sqrbrkt{-> New expression.l_element(id, expression)};
+				
+	
+	more_values = comma value{-> New more_values(value)};
+	
+	import = {import} import_k module import_as? more_modules*{-> New import.import(module, [import_as], [more_modules])}|
+			 {from_import} from module import_k id import_as? more_import_ids*{-> New import.from_import(module, id, [import_as],[more_import_ids])};
+	
+	import_as = as id{-> New import_as(id)};
+	more_modules = comma module import_as?{-> New more_modules(module, [import_as])};
+	more_import_ids = comma id import_as?{-> New more_import_ids(id, [import_as])};
+	
+	module = module_part* id{-> New module([module_part], id)};
+	
+	module_part = id dot{-> New module_part(id)};
+	
+	comparison = {true} true{-> New comparison.true()}|
+				 {false} false{-> New comparison.false()}|
+				 {greatc} [e1]:expression great [e2]:expression{-> New comparison.greatc(e1,e2)}| // expression, expression => e1,e2
+				 {lessc} [e1]:expression less [e2]:expression{-> New comparison.lessc(e1,e2)}| // expression, expression => e1,e2
+				 {neq} [e1]:expression neq [e2]:expression{-> New comparison.neq(e1,e2)}| // expression, expression => e1,e2
+				 {eqeq} [e1]:expression eqeq [e2]:expression{-> New comparison.eqeq(e1,e2)}; // expression, expression => e1,e2
+				 
+				 
+	function_call = id l_par arglist? r_par{-> New function_call(id, [arglist])};
+	
+	arglist = expression more_exp*{-> New arglist(expression, [more_exp])};
+	
+	value = {func_call} id dot function_call{-> New value.func_call(id, function_call)}|
+			{number} number{-> New value.number()}|
+			{string_lit} string_lit{-> New value.string_lit()};
+	
+	number = {integer} integer{-> New number.integer()}|
+			 {float} float{-> New number.float()};
+
+Abstract Syntax Tree
+
+	goal = command*;
+	
+	command = {function} function|
+			{statement} statement;
+	
+	function = id argument* statement;
+	
+	argument = id arg_set_value* more_args*;
+	
+	arg_set_value = value;
+	
+	more_args = id arg_set_value*;
+	
+	statement = {if} comparison statement|
+				{while} comparison statement|
+				{for} [id1]:id [id2]:id statement|
+				{return} expression|
+				{print} expression more_exp*|
+				{assign} id expression|
+				{decrement} id expression|
+				{decrement_div} id expression|
+				{assign_element} id [e1]:expression [e2]:expression|
+				{assertion} expression more_exp*|
+				{assertion_cmp} comparison more_exp*|
+				{func_call} function_call|
+				{import} import;
+				
+	more_exp = expression;
+	
+	expression = {addition} [e1]:expression [e2]:expression|
+				{subtraction} [e1]:expression [e2]:expression|
+				{multiplication} [e1]:expression [e2]:expression|
+				{division} [e1]:expression [e2]:expression|
+				{pow} [e1]:expression [e2]:expression|
+				{identifier} id|
+				{value} value|
+				{func_call} function_call|
+				{par} expression|
+				{list} value more_values*|
+				{l_element} id expression;
+	
+	more_values = value;
+	
+	import = {import} module import_as* more_modules*|
+			{from_import} module id import_as* more_import_ids*;
+	
+	import_as = id;
+	
+	more_modules = module import_as*;
+	
+	more_import_ids = id import_as*;
+	
+	module = module_part* id;
+	
+	module_part = id;
+	
+	comparison = {true}|
+				{false}|
+				{greatc} [e1]:expression [e2]:expression|
+				{lessc} [e1]:expression [e2]:expression|
+				{neq} [e1]:expression [e2]:expression|
+				{eqeq} [e1]:expression [e2]:expression;
+	
+	function_call = id arglist*;
+	
+	arglist = expression more_exp*;
+	
+	value = {func_call} id function_call|
+			{number}|
+			{string_lit};
+	
+	number = {integer}|
+			{float};
+	
